@@ -111,11 +111,20 @@ class data_manage:
             applyTerminalLogs('An error have ocurred while creating a new user, rollback have been made.',-1)
             applyTerminalLogs(str(err),-1)
             return None
+    def check_user_exists(email) -> bool:
+        email_cipher,email_tag,email_nonce = Crypting.encrypt(str(email).encode("utf-8"))
+        return (User.query.filter_by(
+            email=email_cipher,
+            email_tag=email_tag,
+            email_nonce=email_nonce,
+        ).first() != None)
 @app.route("/login_user",methods=['POST'])
 def login_user_method():
-    if request.method == "POST" and 'email' in request.data and 'password' in request.data:
-        cipher_email,tag_email,nonce_email = Crypting.encrypt(request.data['email'])
-        cipher_password,tag_password,nonce_password = Crypting.encrypt(request.data['password'])
+    if not request.data: return
+    data = json.loads(request.data)
+    if request.method == "POST" and 'email' in data and 'password' in data:
+        cipher_email,tag_email,nonce_email = Crypting.encrypt(data['email'])
+        cipher_password,tag_password,nonce_password = Crypting.encrypt(data['password'])
         track_user = User.query.filter_by(
             email=cipher_email,
             email_tag = tag_email,
@@ -137,10 +146,28 @@ def login_user_method():
                 'auth_key': auth_key
             })
     else:
-        if not 'email' in request.data:
-            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'email' in 'request.data'",0)
-        if not 'password' in request.data:
-            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'password' in 'request.data'",0)
+        if not 'email' in data:
+            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'email' in 'data'",0)
+        if not 'password' in data:
+            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'password' in 'data'",0)
+data_m = data_manage()
 @app.route("/register_user",methods=['POST'])
 def register_user_request():
-    
+    if not request.data: return
+    data = json.loads(request.data)
+    if request.method == "POST" and 'email' in data and 'password' in data:
+        sucess = False
+        auth_key = ''
+        if not data_m.check_user_exists(data.get('email')):
+            new_user = data_m.create_user(data.get('email'),data.get('password'))
+            if new_user:
+                applyTerminalLogs("A new user has been created!",2)
+                auth_key = new_user.auth_key
+                sucess = True
+
+        return jsonify({'sucess':sucess,'auth_key':auth_key})
+    else:
+        if not 'email' in data:
+            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'email' in 'data'",0)
+        if not 'password' in data:
+            applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'password' in 'data'",0)
