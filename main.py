@@ -171,3 +171,6 @@ def register_user_request():
             applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'email' in 'data'",0)
         if not 'password' in data:
             applyTerminalLogs("A received request[POST] haven't a valid body : Missing 'password' in 'data'",0)
+
+if __name__ == "__main__":
+    app.run(host='127.0.0.1',port=30)
