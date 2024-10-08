@@ -122,7 +122,7 @@ class data_manage:
             email_nonce=email_nonce,
         ).first() != None)
 @app.route("/login_user",methods=['POST'])
-def login_user_method():
+def login_user_request():
     if not request.data: return
     data = json.loads(request.data)
     if request.method == "POST" and 'email' in data and 'password' in data:
@@ -178,5 +178,25 @@ def register_user_request():
         if not 'password' in data:
             applyTerminalLogs("A received request[POST] haven't a valid body : Missing (password) in (data)",0)
 
+@app.route("/get_user_data_list",methods=['POST'])
+def get_user_data_request():
+    if not request.data: return
+    data = json.loads(request.data)
+    if 'auth_key' in data:
+        try:
+            user = User.query.filter_by(auth_key=data['auth_key']).first()
+            if user:
+                expense_json = user.expense_json
+                expense_json_tag = user.expense_json_tag
+                expense_json_nonce = user.expense_json_nonce
+                expense_json = Crypting.decrypt(expense_json,expense_json_tag,expense_json_nonce)
+                expense_json = json.loads(expense_json)
+                return jsonify(str({'data':expense_json}))
+            else:
+                applyTerminalLogs("Failed to find user with it's (auth_key)",1)
+        except Exception as err:
+            applyTerminalLogs("Failed to get the user's data",0)
+            applyTerminalLogs(str(err),-1)
+    return jsonify({'data':'[]'})
 if __name__ == "__main__":
     app.run(host='127.0.0.1',port=30)
