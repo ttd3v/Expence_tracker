@@ -3,44 +3,45 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 import secrets,json
-import threading
-import time,datetime
+import threading,math
+from time import time
+from datetime import datetime
 from random import randint
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
 app = Flask(__name__)
-app.secret_key = b'c\xb3G*\xa3\xf1\xf1\xf2#\x0c\x0e\xa4"d$t'
+app.secret_key = b'f99ad82706ad41b321df79ceeed22103'
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///data.db"
 db = SQLAlchemy(app)
-cross_origin_resource_sharing = CORS(app,origins=["http://localhost:3000"])
+cross_origin_resource_sharing = CORS(app,origins=["http://127.0.0.1:3000","http://localhost:3000"])
 terminalLogs = {}
 terminal_logs_saved = True
 
+def crypt(plain_text : bytes):
+    cipher = AES.new(app.secret_key,AES.MODE_EAX)
+    text,tag = cipher.encrypt_and_digest(plain_text)
+    return text,tag,cipher.nonce
+def decrypt(text,tag,nonce):
+    cipher = AES.new(app.secret_key,AES.MODE_EAX,nonce=nonce)
+    return cipher.decrypt_and_verify(text,tag)
 with open('./terminalLogs.json','r') as file:
     terminalLogs = json.load(file)
     file.close()
 
 def applyTerminalLogs(message : str, weight : int):
     global terminal_logs_saved
-    terminalLogs[time.time()] = str({"date":datetime.datetime.now(),"message":message,"weight":weight})
+    stamp = time()
+    terminalLogs[stamp] = str({"date":datetime.now(),"message":message,"weight":weight})
+    print(message)
     terminal_logs_saved = False
-    ## Weight: -1(error) 0(warn) 1(normal) 2(sucess)
-def __terminallogthreadfun___():
-    global terminal_logs_saved
-    while True:   
-        if not terminal_logs_saved:
-            with open('./terminalLogs.json','w') as file:
+    with open('./terminalLogs.json','w') as file:
                 json.dump(terminalLogs,file)
                 file.close()
                 terminal_logs_saved = True
-        time.sleep(1) 
-        
-        
+    
+    ## Weight: -1(error) 0(warn) 1(normal) 2(sucess)
 
-save_terminal_logs_thread = threading.Thread(target=__terminallogthreadfun___,daemon=True)
-save_terminal_logs_thread.start()
-print("save_terminal_started")
 
 with app.app_context():
     db.create_all()
@@ -48,39 +49,33 @@ with app.app_context():
 migrage = Migrate(app,db)
 migrage.init_app(app,db)
 
-def create_auth_key(length=500) -> str:
-        return get_random_bytes(450)
-class Crypt:
-    def __init__(self) -> None:
-        pass
-    def encrypt(self,plain_text):
-        plain_text = str(plain_text).encode('utf-8')
-        cipher = AES.new(app.secret_key,AES.MODE_EAX)
-        text,tag =  cipher.encrypt_and_digest(plain_text)
-        return text,tag,cipher.nonce
-    def decrypt(self,cipher_text,tag,nonce):
-        cipher_text = str(cipher_text).encode('utf-8')
-        cipher = AES.new(app.secret_key,AES.MODE_EAX,nonce=nonce)
-        return cipher.decrypt_and_verify(cipher_text,tag)
-Crypting = Crypt()
+def create_auth_key(length=100) -> str:
+    chars = str('1 2 3 4 5 6 7 8 9 0 q w e r t y u i o p a s d f g h j k l z x c v b n m Q W E R T Y U I O P Z X C V B N M').split(" ")
+    result = ''
+    for _ in range(length):
+        result += secrets.choice(chars)
+    print(result)
+    return result
 
 class User(db.Model):
     __tablename__ = "user"
     id = db.Column(db.Integer,nullable=False,primary_key=True,unique=True)
-    auth_key=db.Column(db.String(500),nullable=False,unique=True, default=create_auth_key)
+    auth_key=db.Column(db.String(50),nullable=False,unique=True)
     super_user=db.Column(db.Boolean,nullable=False,default=False)
     
-    email = db.Column(db.String(320**2),nullable=False,unique=True)
-    email_nonce = db.Column(db.String(32**2),nullable=False)
-    email_tag = db.Column(db.String(32**2),nullable=False)
+    email = db.Column(db.LargeBinary,nullable=False,unique=True)
+    email_nonce = db.Column(db.LargeBinary,nullable=False,unique=True)
+    email_tag = db.Column(db.LargeBinary,nullable=False,unique=True)
     
-    password = db.Column(db.String(300**2),nullable=False)
-    password_nonce = db.Column(db.String(320**2),nullable=False)
-    password_tag = db.Column(db.String(320**2),nullable=False)
+    password = db.Column(db.LargeBinary,nullable=False,unique=True)
+    password_nonce = db.Column(db.LargeBinary,nullable=False,unique=True)
+    password_tag = db.Column(db.LargeBinary,nullable=False,unique=True)
 
-    expense_json = db.Column(db.Text,nullable=False)
-    expense_json_nonce = db.Column(db.Text,nullable=False)
-    expense_json_tag = db.Column(db.Text,nullable=False)
+    expense_json = db.Column(db.LargeBinary,nullable=False)
+    expense_json_nonce = db.Column(db.LargeBinary,nullable=False)
+    expense_json_tag = db.Column(db.LargeBinary,nullable=False)
+    def __repr__(self) -> str:
+        return f"User<{self.auth_key}>"
 
 class data_manage:
     def __init__(self) -> None:
@@ -88,22 +83,23 @@ class data_manage:
     def create_user(self,email,password):
         try:
             new_user = User()
-            new_user.auth_key = get_random_bytes(400)
-            json_data,json_tag,json_nonce = Crypting.encrypt(b'{}')
+            new_user.auth_key = create_auth_key(500)
+            json_data,json_tag,json_nonce = crypt(b'{}')
             
             new_user.expense_json = json_data
             new_user.expense_json_tag = json_tag
             new_user.expense_json_nonce = json_nonce
 
-            email_data,email_tag,email_nonce = Crypting.encrypt(str(email).encode('utf-8'))
+            email_data,email_tag,email_nonce = crypt(str(email).encode('utf-8'))
             new_user.email = email_data
             new_user.email_tag = email_tag
             new_user.email_nonce = email_nonce
 
-            password_data,password_tag,password_nonce = Crypting.encrypt(str(password).encode('utf-8'))
+            password_data,password_tag,password_nonce = crypt(str(password).encode('utf-8'))
             new_user.password = password_data
             new_user.password_tag = password_tag
             new_user.password_nonce = password_nonce
+            print(decrypt(json_data,json_tag,json_nonce))
             db.session.add(new_user)
             db.session.commit()
             return new_user
@@ -115,7 +111,7 @@ class data_manage:
             applyTerminalLogs(str(err),-1)
             return None
     def check_user_exists(self,email) -> bool:
-        email_cipher,email_tag,email_nonce = Crypting.encrypt(str(email).encode("utf-8"))
+        email_cipher,email_tag,email_nonce = crypt(str(email).encode("utf-8"))
         return (User.query.filter_by(
             email=email_cipher,
             email_tag=email_tag,
@@ -126,8 +122,8 @@ def login_user_request():
     if not request.data: return
     data = json.loads(request.data)
     if request.method == "POST" and 'email' in data and 'password' in data:
-        cipher_email,tag_email,nonce_email = Crypting.encrypt(data['email'])
-        cipher_password,tag_password,nonce_password = Crypting.encrypt(data['password'])
+        cipher_email,tag_email,nonce_email = crypt(data['email'])
+        cipher_password,tag_password,nonce_password = crypt(data['password'])
         track_user = User.query.filter_by(
             email=cipher_email,
             email_tag = tag_email,
@@ -182,21 +178,78 @@ def register_user_request():
 def get_user_data_request():
     if not request.data: return
     data = json.loads(request.data)
-    if 'auth_key' in data:
+    print(data)
+    if 'auth_key' in data and len(data['auth_key']) > 10:
         try:
+            print(data['auth_key'])
             user = User.query.filter_by(auth_key=data['auth_key']).first()
+            print(user)
             if user:
                 expense_json = user.expense_json
                 expense_json_tag = user.expense_json_tag
                 expense_json_nonce = user.expense_json_nonce
-                expense_json = Crypting.decrypt(expense_json,expense_json_tag,expense_json_nonce)
+                expense_json = decrypt(expense_json,expense_json_tag,expense_json_nonce)
+                expense_json = expense_json.decode('utf-8')
+                expense_json = expense_json.replace("'",'"')
+                print(expense_json)
                 expense_json = json.loads(expense_json)
-                return jsonify(str({'data':expense_json}))
+                print(expense_json)
+                return json.loads(json.dumps(expense_json))
             else:
                 applyTerminalLogs("Failed to find user with it's (auth_key)",1)
+                return jsonify(str({'error':'null_user'}))
         except Exception as err:
             applyTerminalLogs("Failed to get the user's data",0)
             applyTerminalLogs(str(err),-1)
-    return jsonify({'data':'[]'})
+            return jsonify(str({'error':'null_user'}))
+    return jsonify(str({}))
+
+@app.route("/create_user_history",methods=["POST"])
+def create_user_history_request():
+    if not request.data: return
+    data = json.loads(request.data)
+    if not 'auth_key' in data:
+        applyTerminalLogs("A received request[POST] haven't a valid body : Missing (auth_key)",0)
+    else:
+        user = User.query.filter_by(auth_key=data['auth_key']).first()
+        if user:
+            if not 'new_history' in data:
+                applyTerminalLogs("Failed to create (new_history) : Missing (new_history) in (data)",-1)
+                return None
+            if 'new_history' in data:
+                try:
+                    expense_json = user.expense_json
+                    expense_json_tag = user.expense_json_tag
+                    expense_json_nonce = user.expense_json_nonce
+                    print("step 1")
+                    expense_json = decrypt(expense_json,expense_json_tag,expense_json_nonce)
+                    print(expense_json.decode('utf-8'))
+                    expense_json = json.loads((expense_json.decode('utf-8')).replace("'",'"'))
+                    print('step 2')
+                    print(expense_json,expense_json_tag,expense_json_nonce)
+                    new_history = data['new_history']
+                    stamp = math.floor(time())
+                    expense_json[str(stamp)] = {
+                        'Cash' : new_history['Cash'],
+                        'Name' : new_history['Name'],
+                        'Category' : new_history['Category'],
+                        'Date' : str(datetime.fromtimestamp(stamp))
+                    }
+                    
+                    encrypted_json,encrypted_json_tag, encrypted_json_nonce = crypt(str(expense_json).encode('utf-8'))
+                    user.expense_json = encrypted_json
+                    user.expense_json_tag = encrypted_json_tag
+                    user.expense_json_nonce = encrypted_json_nonce 
+                    db.session.commit()
+                    return jsonify(str(expense_json[str(stamp)]))
+                except Exception as err:
+                    db.session.rollback()
+                    applyTerminalLogs("Error while saving user expense_json, a rollback has been made",-1)
+                    applyTerminalLogs(str(err),-1)
+                    return None
+        else:
+            print(data['auth_key'])
+            applyTerminalLogs("Failed to find user, no auth_key match",-1)
+            return jsonify(str({'error':'null_user'}))
 if __name__ == "__main__":
     app.run(host='127.0.0.1',port=30)
